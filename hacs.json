@@ -1,0 +1,5 @@
+{
+  "name": "cremalink for home-assistant",
+  "content_in_root": true,
+  "homeassistant": "2025.12.05b0"
+}
