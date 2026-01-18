@@ -1,10 +1,12 @@
-ARG BUILD_FROM
-FROM $BUILD_FROM
+ARG BUILD_ARCH
+FROM ghcr.io/home-assistant/${BUILD_ARCH}-base-python:3.13-alpine3.23
+
 
 RUN python -m venv /opt/venv \
-    && /opt/venv/bin/pip install --no-cache-dir "cremalink==0.1.0b6"
+     && /opt/venv/bin/pip install -U --no-cache-dir "cremalink==0.1.0b9"
 
-# Copy data for add-on
+WORKDIR /opt/cremalink
+
 COPY run.sh /
 RUN chmod a+x /run.sh
 

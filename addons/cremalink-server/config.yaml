@@ -1,4 +1,4 @@
-name: "cremalink-server"
+name: "Cremalink for Home-Assistant"
 description: "Runs the Cremalink local server from the PyPI cremalink package."
 version: "0.1.0"
 url: "https://github.com/miditkl/cremalink-ha"
@@ -12,21 +12,19 @@ arch:
   - i386
 startup: services
 boot: auto
-ports:
-  10280/tcp: 10280
-ports_description:
-  10280/tcp: "Cremalink local server port"
+host_network: true
+hassio_api: true
 map:
   - config:rw
   - share:rw
   - data:rw
 options:
-  server_ip: 127.0.0.1
+  advertised_ip: ""
   server_port: 10280
   monitor_poll_interval: 1.0
   log_level: info
 schema:
-  server_ip: str
+  advertised_ip: str?
   server_port: int
   monitor_poll_interval: float
   log_level: str
