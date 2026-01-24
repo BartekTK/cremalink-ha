@@ -10,7 +10,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from cremalink import create_local_device, device_map
-from cremalink.devices import device_map as resolve_device_map
 
 from .const import *
 from .coordinator import CremalinkCoordinator
@@ -47,7 +46,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             filename = map_selection.split(":", 1)[1]
             map_path = hass.config.path(CUSTOM_MAP_DIR, filename)
         else:
-            map_path = await hass.async_add_executor_job(resolve_device_map, map_selection)
+            map_path = await hass.async_add_executor_job(device_map, map_selection)
 
     except Exception as e:
         _LOGGER.error("Could not resolve device map '%s': %s", map_selection, e)

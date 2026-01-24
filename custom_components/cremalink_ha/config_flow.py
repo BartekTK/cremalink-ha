@@ -58,6 +58,7 @@ class CremalinkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._addon_url = user_input[CONF_ADDON_URL]
             try:
                 import requests
+
                 def _check():
                     # Check health endpoint of the addon
                     return requests.get(f"{self._addon_url.rstrip('/')}/health", timeout=5)

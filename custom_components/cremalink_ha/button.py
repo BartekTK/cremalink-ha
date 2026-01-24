@@ -23,20 +23,19 @@ async def async_setup_entry(hass, entry, async_add_entities):
     for cmd in cmds:
         # Filter out power commands as they might be handled elsewhere
         if cmd.lower() not in ["wakeup", "standby", "refresh"]:
-            entities.append(CremalinkButton(coordinator, device, entry.title, cmd, entry.entry_id))
+            entities.append(CremalinkButton(coordinator, device, cmd, entry.entry_id))
     async_add_entities(entities)
 
 
 class CremalinkButton(CoordinatorEntity, ButtonEntity):
     """Representation of a Cremalink button."""
 
-    def __init__(self, coordinator, device, dev_name, cmd, entry_id):
+    def __init__(self, coordinator, device, cmd, entry_id):
         """Initialize the button.
 
         Args:
             coordinator: The data update coordinator.
             device: The Cremalink device instance.
-            dev_name: The name of the device.
             cmd: The command associated with this button.
             entry_id: The unique ID of the config entry.
         """
