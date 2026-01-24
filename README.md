@@ -18,6 +18,8 @@ This integration connects your Home Assistant instance to the **Cremalink** ecos
 >
 > The goal is to make the library fully generic. If you encounter issues with other machines, contributions are highly encouraged!
 
+> [!NOTE]
+> **cremalink-ha** acts solely as a bridge to Home Assistant. Device management (e.g., adding new machines) is handled exclusively via the main **[cremalink](https://github.com/miditkl/cremalink)** project. Please set up your devices there before using this integration.
 ---
 
 ## 🚀 Installation
