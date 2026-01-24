@@ -1,3 +1,4 @@
+"""The Cremalink Home Assistant integration."""
 import logging
 from urllib.parse import urlparse
 from functools import partial
@@ -20,17 +21,28 @@ PLATFORMS = [Platform.SWITCH, Platform.BUTTON, Platform.SENSOR, Platform.BINARY_
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Cremalink from a config entry.
+
+        Args:
+            hass: The Home Assistant instance.
+            entry: The config entry.
+
+        Returns:
+            True if the setup was successful, False otherwise.
+    """
     addon_url = entry.data[CONF_ADDON_URL]
     dsn = entry.data[CONF_DSN]
     lan_key = entry.data[CONF_LAN_KEY]
     device_ip = entry.data[CONF_DEVICE_IP]
     map_selection = entry.data[CONF_DEVICE_MAP]
 
+    # Parse the addon URL to get host and port
     parsed_url = urlparse(addon_url)
     server_host = parsed_url.hostname
     server_port = parsed_url.port or 80
 
     try:
+        # Resolve the device map path
         if map_selection.startswith("custom:"):
             filename = map_selection.split(":", 1)[1]
             map_path = hass.config.path(CUSTOM_MAP_DIR, filename)
@@ -42,6 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
 
     try:
+        # Create the local device instance
         device = await hass.async_add_executor_job(
             partial(
                 create_local_device,
@@ -53,7 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 device_map_path=str(map_path)
             )
         )
-
+        # Configure the device
         await hass.async_add_executor_job(device.configure)
 
     except Exception as e:
@@ -73,6 +86,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry.
+
+    Args:
+        hass: The Home Assistant instance.
+        entry: The config entry.
+
+    Returns:
+        True if the unload was successful.
+    """
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok

@@ -1,3 +1,5 @@
+"""Constants for the Cremalink Home Assistant integration."""
+
 DEVICE_NAME = "device_name"
 
 DOMAIN = "cremalink_ha"

@@ -1,3 +1,4 @@
+"""Sensor platform for the Cremalink integration."""
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.const import PERCENTAGE
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -12,6 +13,13 @@ SENSORS = [
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
+    """Set up the sensor platform.
+
+    Args:
+        hass: The Home Assistant instance.
+        entry: The config entry.
+        async_add_entities: Function to add entities.
+    """
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator = data["coordinator"]
 
@@ -23,7 +31,19 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class CremalinkSensor(CoordinatorEntity, SensorEntity):
+    """Representation of a Cremalink sensor."""
+
     def __init__(self, coordinator, entry, key, name, icon, unit):
+        """Initialize the sensor.
+
+        Args:
+            coordinator: The data update coordinator.
+            entry: The config entry.
+            key: The key to identify the sensor data.
+            name: The name of the sensor.
+            icon: The icon for the sensor.
+            unit: The unit of measurement for the sensor.
+        """
         super().__init__(coordinator)
         self._key = key
         self._attr_name = f"{entry.title} {name}"
@@ -33,4 +53,5 @@ class CremalinkSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
+        """Return the value of the sensor."""
         return getattr(self.coordinator.data, self._key, None)

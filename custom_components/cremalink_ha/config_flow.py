@@ -1,3 +1,4 @@
+"""Config flow for the Cremalink integration."""
 import logging
 import os
 import voluptuous as vol
@@ -13,11 +14,21 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def get_available_maps(hass: HomeAssistant) -> list[str]:
+    """Retrieve available device maps, including custom ones.
+
+        Args:
+            hass: The Home Assistant instance.
+
+        Returns:
+            A list of available device map identifiers.
+    """
     try:
+        # Get built-in maps from the library
         maps = list(get_device_maps())
     except Exception:
         maps = []
 
+    # Check for custom maps in the configuration directory
     custom_dir = hass.config.path(CUSTOM_MAP_DIR)
     if os.path.exists(custom_dir):
         for f in os.listdir(custom_dir):
@@ -28,16 +39,27 @@ def get_available_maps(hass: HomeAssistant) -> list[str]:
 
 
 class CremalinkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for Cremalink."""
+
     VERSION = 1
     _addon_url = DEFAULT_ADDON_URL
 
     async def async_step_user(self, user_input=None):
+        """Handle the initial step.
+
+        Args:
+            user_input: Input data from the user.
+
+        Returns:
+            The next step in the flow.
+        """
         errors = {}
         if user_input is not None:
             self._addon_url = user_input[CONF_ADDON_URL]
             try:
                 import requests
                 def _check():
+                    # Check health endpoint of the addon
                     return requests.get(f"{self._addon_url.rstrip('/')}/health", timeout=5)
 
                 resp = await self.hass.async_add_executor_job(_check)
@@ -55,6 +77,13 @@ class CremalinkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_device(self, user_input=None):
+        """Handle the device configuration step.
+
+        Args:
+            user_input: Input data from the user
+        Returns:
+            The created config entry or the form to show.
+        """
         errors = {}
         maps = await self.hass.async_add_executor_job(get_available_maps, self.hass)
         if user_input:
