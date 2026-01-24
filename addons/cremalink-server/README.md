@@ -1,4 +1,4 @@
-# ☕ Cremalink Server HA Add-on
+# <img src="icon.png" alt="Cremalink Logo" height="45" style="vertical-align: middle; margin-right: 10px;"> cremalink Server HA Add-on
 
 **Run the local Cremalink server directly within Home Assistant to bridge your coffee machine.**
 

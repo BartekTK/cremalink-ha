@@ -1,4 +1,4 @@
-# ☕ Cremalink for Home Assistant
+# <img src="icon.png" alt="Cremalink Logo" height="45" style="vertical-align: middle; margin-right: 10px;"> cremalink for Home Assistant
 
 **The official Home Assistant integration for monitoring and controlling IoT coffee machines via Cremalink.**
 
