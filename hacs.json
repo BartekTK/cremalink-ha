@@ -1,6 +1,5 @@
 {
   "name": "Cremalink for Home-Assistant",
   "homeassistant": "2025.12.05b0",
-
   "persistent_directory": "data"
 }
