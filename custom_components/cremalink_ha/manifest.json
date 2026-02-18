@@ -8,7 +8,7 @@
   "iot_class": "local_polling",
   "config_flow": true,
   "requirements": [
-    "cremalink @ git+https://github.com/BartekTK/cremalink.git@main"
+    "cremalink @ git+https://github.com/BartekTK/cremalink.git@b01d51af054286ade6ff96e0764a6ed7bf035c32"
   ],
   "issue_tracker": "https://github.com/miditkl/cremalink-ha/issues",
   "version": "v0.1.0b14",
