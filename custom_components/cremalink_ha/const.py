@@ -24,3 +24,6 @@ TOKEN_DIR = "cremalink_tokens"
 
 # App connection refresh interval in seconds.
 APP_ID_REFRESH_INTERVAL = 60
+
+# Properties (counters, recipes, profiles) polling interval in seconds.
+PROPERTIES_SCAN_INTERVAL = 300

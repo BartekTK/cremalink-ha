@@ -12,7 +12,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from cremalink import create_local_device, device_map, Client
 
 from .const import *
-from .coordinator import CremalinkCoordinator
+from .coordinator import CremalinkCoordinator, CremalinkPropertiesCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,11 +94,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = CremalinkCoordinator(hass, device, connection_type)
     await coordinator.async_config_entry_first_refresh()
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
+    entry_data: dict = {
         "coordinator": coordinator,
-        "device": device
+        "device": device,
     }
+
+    if connection_type == CONNECTION_CLOUD:
+        properties_coordinator = CremalinkPropertiesCoordinator(hass, device)
+        await properties_coordinator.async_config_entry_first_refresh()
+        entry_data["properties_coordinator"] = properties_coordinator
+
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = entry_data
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

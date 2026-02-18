@@ -1,14 +1,18 @@
 """Data update coordinator for the Cremalink integration."""
 import logging
 import time
+from dataclasses import dataclass, field
 from datetime import timedelta
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from cremalink.domain.device import Device
+from cremalink.parsing.properties import PropertiesSnapshot
+from cremalink.parsing.recipes import RecipeSnapshot
 
-from .const import DOMAIN, CONNECTION_CLOUD, APP_ID_REFRESH_INTERVAL
+from .const import DOMAIN, CONNECTION_CLOUD, APP_ID_REFRESH_INTERVAL, PROPERTIES_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -97,3 +101,52 @@ class CremalinkCoordinator(DataUpdateCoordinator):
             return data
         except Exception as err:
             raise UpdateFailed(f"Error communicating with device: {err}") from err
+
+
+@dataclass
+class PropertiesData:
+    """Parsed results from a properties fetch."""
+
+    counters: dict[str, int] = field(default_factory=dict)
+    profile_names: dict[int, str] = field(default_factory=dict)
+    recipes: list[RecipeSnapshot] = field(default_factory=list)
+
+
+class CremalinkPropertiesCoordinator(DataUpdateCoordinator[PropertiesData]):
+    """Slow-polling coordinator for cloud properties (counters, profiles, recipes)."""
+
+    def __init__(self, hass: HomeAssistant, device: Device) -> None:
+        """Initialize the properties coordinator.
+
+        Args:
+            hass: The Home Assistant instance.
+            device: The Cremalink device instance.
+        """
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN}_properties",
+            update_interval=timedelta(seconds=PROPERTIES_SCAN_INTERVAL),
+        )
+        self.device = device
+
+    async def _async_update_data(self) -> PropertiesData:
+        """Fetch and parse cloud properties.
+
+        Returns:
+            Parsed properties data with counters, profile names, and recipes.
+
+        Raises:
+            UpdateFailed: If there is an error communicating with the device.
+        """
+        try:
+            snapshot: PropertiesSnapshot = await self.hass.async_add_executor_job(
+                self.device.get_properties
+            )
+            return PropertiesData(
+                counters=snapshot.get_counters(),
+                profile_names=snapshot.get_profile_names(),
+                recipes=snapshot.get_recipes(),
+            )
+        except Exception as err:
+            raise UpdateFailed(f"Error fetching properties: {err}") from err
