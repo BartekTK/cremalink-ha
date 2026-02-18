@@ -1,10 +1,14 @@
 """Select platform for the Cremalink integration."""
+import logging
+
 from homeassistant.components.select import SelectEntity
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -18,13 +22,20 @@ async def async_setup_entry(hass, entry, async_add_entities):
     data = hass.data[DOMAIN][entry.entry_id]
     properties_coordinator = data.get("properties_coordinator")
 
-    if not properties_coordinator or not properties_coordinator.data:
+    if not properties_coordinator:
+        _LOGGER.debug("No properties coordinator, skipping select platform")
+        return
+
+    if not properties_coordinator.data:
+        _LOGGER.debug("Properties coordinator has no data, skipping select platform")
         return
 
     profile_names = properties_coordinator.data.profile_names
     if not profile_names:
+        _LOGGER.debug("No profile names found, skipping select platform")
         return
 
+    _LOGGER.info("Creating brew profile select with profiles: %s", profile_names)
     async_add_entities([
         CremalinkProfileSelect(properties_coordinator, entry, profile_names)
     ])
