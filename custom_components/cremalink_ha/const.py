@@ -27,3 +27,12 @@ APP_ID_REFRESH_INTERVAL = 60
 
 # Properties (counters, recipes, profiles) polling interval in seconds.
 PROPERTIES_SCAN_INTERVAL = 300
+
+# Service name for custom brewing.
+SERVICE_BREW = "brew"
+
+# Brew service parameter names (matching TLV param names).
+BREW_PARAMS = [
+    "coffee_ml", "milk_ml", "water_ml", "temperature",
+    "taste", "aroma", "foam_level", "milk_temp",
+]

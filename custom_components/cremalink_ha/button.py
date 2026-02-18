@@ -64,6 +64,7 @@ class CremalinkButton(CoordinatorEntity, ButtonEntity):
         super().__init__(coordinator)
         self.device = device
         self._cmd = cmd
+        self._entry_id = entry.entry_id
         self._properties_coordinator = properties_coordinator
 
         # Use BeverageCatalog for proper display names and icons.
@@ -123,26 +124,35 @@ class CremalinkButton(CoordinatorEntity, ButtonEntity):
             return not (is_standby or is_ready)
         return is_standby or is_ready
 
+    def _get_selected_profile(self) -> int:
+        """Return the selected brew profile number from the select entity."""
+        return self.hass.data.get(DOMAIN, {}).get(
+            self._entry_id, {}
+        ).get("selected_profile", 1)
+
+    def _find_recipe(self, bev_id: int, profile: int):
+        """Find a recipe matching the beverage ID and profile."""
+        if not self._properties_coordinator or not self._properties_coordinator.data:
+            return None
+        recipes = self._properties_coordinator.data.recipes
+        fallback = None
+        for recipe in recipes:
+            if recipe.bev_id == bev_id:
+                if recipe.profile == profile:
+                    return recipe
+                if fallback is None:
+                    fallback = recipe
+        return fallback
+
     @property
     def extra_state_attributes(self):
         """Return recipe parameters as extra state attributes."""
-        if not self._properties_coordinator or not self._properties_coordinator.data:
-            return None
-
         bev_info = _CATALOG.get_by_name(self._cmd)
         if not bev_info:
             return None
 
-        # Find the first recipe matching this beverage ID (profile 1 preferred).
-        recipes = self._properties_coordinator.data.recipes
-        match = None
-        for recipe in recipes:
-            if recipe.bev_id == bev_info.id:
-                if recipe.profile == 1:
-                    match = recipe
-                    break
-                if match is None:
-                    match = recipe
+        profile = self._get_selected_profile()
+        match = self._find_recipe(bev_info.id, profile)
 
         if not match or not match.named_params:
             return None
@@ -150,6 +160,21 @@ class CremalinkButton(CoordinatorEntity, ButtonEntity):
         return {k: v for k, v in match.named_params.items()}
 
     async def async_press(self):
-        """Handle the button press."""
+        """Handle the button press.
+
+        Uses the selected profile's recipe parameters when available,
+        otherwise falls back to the default command from the device map.
+        """
+        bev_info = _CATALOG.get_by_name(self._cmd)
+        if bev_info and self._properties_coordinator and self._properties_coordinator.data:
+            profile = self._get_selected_profile()
+            recipe = self._find_recipe(bev_info.id, profile)
+            if recipe and recipe.params:
+                await self.hass.async_add_executor_job(
+                    self.device.brew_custom, self._cmd, recipe.params
+                )
+                await self.coordinator.async_request_refresh()
+                return
+
         await self.hass.async_add_executor_job(self.device.do, self._cmd)
         await self.coordinator.async_request_refresh()

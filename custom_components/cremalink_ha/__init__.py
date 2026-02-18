@@ -1,13 +1,14 @@
 """The Cremalink Home Assistant integration."""
 import logging
+import voluptuous as vol
 from urllib.parse import urlparse
 from functools import partial
 
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import config_validation as cv
 
 from cremalink import create_local_device, device_map, Client
 
@@ -16,7 +17,19 @@ from .coordinator import CremalinkCoordinator, CremalinkPropertiesCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.SWITCH, Platform.BUTTON, Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS = [Platform.SWITCH, Platform.BUTTON, Platform.SENSOR, Platform.BINARY_SENSOR, Platform.SELECT]
+
+BREW_SCHEMA = vol.Schema({
+    vol.Required("beverage"): cv.string,
+    vol.Optional("coffee_ml"): vol.Coerce(int),
+    vol.Optional("milk_ml"): vol.Coerce(int),
+    vol.Optional("water_ml"): vol.Coerce(int),
+    vol.Optional("temperature"): vol.Coerce(int),
+    vol.Optional("taste"): vol.Coerce(int),
+    vol.Optional("aroma"): vol.Coerce(int),
+    vol.Optional("foam_level"): vol.Coerce(int),
+    vol.Optional("milk_temp"): vol.Coerce(int),
+})
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -97,6 +110,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry_data: dict = {
         "coordinator": coordinator,
         "device": device,
+        "selected_profile": 1,
     }
 
     if connection_type == CONNECTION_CLOUD:
@@ -106,6 +120,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = entry_data
+
+    # Register the brew service (once, on first entry).
+    if not hass.services.has_service(DOMAIN, SERVICE_BREW):
+        async def handle_brew(call: ServiceCall) -> None:
+            """Handle the brew service call."""
+            beverage = call.data["beverage"]
+            params = {}
+            for param_name in BREW_PARAMS:
+                if param_name in call.data:
+                    params[param_name] = call.data[param_name]
+
+            for eid, edata in hass.data.get(DOMAIN, {}).items():
+                dev = edata.get("device")
+                if dev:
+                    await hass.async_add_executor_job(
+                        dev.brew_custom, beverage, params or None
+                    )
+                    coord = edata.get("coordinator")
+                    if coord:
+                        await coord.async_request_refresh()
+                    break
+
+        hass.services.async_register(DOMAIN, SERVICE_BREW, handle_brew, schema=BREW_SCHEMA)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

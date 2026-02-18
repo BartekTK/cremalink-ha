@@ -1,0 +1,70 @@
+brew:
+  name: Brew Beverage
+  description: Brew a beverage with optional parameter overrides.
+  fields:
+    beverage:
+      name: Beverage
+      description: Name of the beverage (e.g. "espresso", "cappuccino", "flat_white").
+      required: true
+      example: "espresso"
+      selector:
+        text:
+    coffee_ml:
+      name: Coffee (ml)
+      description: Coffee volume in ml (overrides profile recipe).
+      selector:
+        number:
+          min: 20
+          max: 300
+          unit_of_measurement: ml
+    milk_ml:
+      name: Milk (ml)
+      description: Milk volume in ml (overrides profile recipe).
+      selector:
+        number:
+          min: 0
+          max: 500
+          unit_of_measurement: ml
+    water_ml:
+      name: Water (ml)
+      description: Water volume in ml (for americano, hot water, etc.).
+      selector:
+        number:
+          min: 0
+          max: 500
+          unit_of_measurement: ml
+    temperature:
+      name: Temperature
+      description: "Temperature setting: 0=low, 1=medium, 2=high."
+      selector:
+        number:
+          min: 0
+          max: 2
+    taste:
+      name: Taste
+      description: "Taste/strength: 0=extra mild, 1=mild, 2=normal, 3=strong, 4=extra strong."
+      selector:
+        number:
+          min: 0
+          max: 4
+    aroma:
+      name: Aroma
+      description: "Aroma pre-brew: 0=off, 1=light, 2=medium, 3=strong."
+      selector:
+        number:
+          min: 0
+          max: 3
+    foam_level:
+      name: Foam Level
+      description: "Milk foam level: 0=none through 4=max."
+      selector:
+        number:
+          min: 0
+          max: 4
+    milk_temp:
+      name: Milk Temperature
+      description: "Milk temperature: 0=low, 1=medium, 2=high."
+      selector:
+        number:
+          min: 0
+          max: 2

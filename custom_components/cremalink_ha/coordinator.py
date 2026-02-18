@@ -3,7 +3,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Any
+from typing import Any, Optional
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -108,8 +108,13 @@ class PropertiesData:
     """Parsed results from a properties fetch."""
 
     counters: dict[str, int] = field(default_factory=dict)
+    aggregate_counters: dict[str, int] = field(default_factory=dict)
     profile_names: dict[int, str] = field(default_factory=dict)
     recipes: list[RecipeSnapshot] = field(default_factory=list)
+    maintenance: dict[str, int] = field(default_factory=dict)
+    favorites: dict[int, list[str]] = field(default_factory=dict)
+    machine_settings: dict[str, int] = field(default_factory=dict)
+    active_profile: Optional[int] = None
 
 
 class CremalinkPropertiesCoordinator(DataUpdateCoordinator[PropertiesData]):
@@ -145,8 +150,13 @@ class CremalinkPropertiesCoordinator(DataUpdateCoordinator[PropertiesData]):
             )
             return PropertiesData(
                 counters=snapshot.get_counters(),
+                aggregate_counters=snapshot.get_aggregate_counters(),
                 profile_names=snapshot.get_profile_names(),
                 recipes=snapshot.get_recipes(),
+                maintenance=snapshot.get_maintenance(),
+                favorites=snapshot.get_favorites(),
+                machine_settings=snapshot.get_machine_settings(),
+                active_profile=snapshot.get_active_profile(),
             )
         except Exception as err:
             raise UpdateFailed(f"Error fetching properties: {err}") from err
