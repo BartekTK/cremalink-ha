@@ -105,10 +105,23 @@ class CremalinkButton(CoordinatorEntity, ButtonEntity):
 
     @property
     def available(self):
-        """Return True if entity is available."""
+        """Return True if entity is available.
+
+        Brew buttons are available when the machine is in standby or ready.
+        The stop button is available when the machine is actively processing.
+
+        Uses status-based predicates rather than the action-based ``is_busy``
+        because the action byte can lag behind the status byte after a brew
+        completes, causing buttons to stay unavailable in standby.
+        """
+        if not super().available or not self.coordinator.data:
+            return False
+        data = self.coordinator.data
+        is_standby = getattr(data, "is_standby", False)
+        is_ready = getattr(data, "is_ready", False)
         if self._cmd.lower() == "stop":
-            return super().available and self.coordinator.data.is_busy
-        return super().available and not self.coordinator.data.is_busy
+            return not (is_standby or is_ready)
+        return is_standby or is_ready
 
     @property
     def extra_state_attributes(self):
