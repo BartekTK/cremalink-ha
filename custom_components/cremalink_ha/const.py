@@ -12,6 +12,8 @@ CONF_DEVICE_MAP = "device_map"
 CONF_CONNECTION_TYPE = "connection_type"
 CONF_REFRESH_TOKEN = "refresh_token"
 CONF_TOKEN_FILE = "token_file"
+CONF_EMAIL = "email"
+CONF_PASSWORD = "password"
 
 CONNECTION_LOCAL = "local"
 CONNECTION_CLOUD = "cloud"
@@ -19,3 +21,6 @@ CONNECTION_CLOUD = "cloud"
 DEFAULT_ADDON_URL = "http://localhost:10280"
 CUSTOM_MAP_DIR = "cremalink_custom_maps"
 TOKEN_DIR = "cremalink_tokens"
+
+# App connection refresh interval in seconds.
+APP_ID_REFRESH_INTERVAL = 60

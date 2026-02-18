@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 
 from cremalink.devices import get_device_maps, load_device_map
 from cremalink import Client
+from cremalink.clients.auth import authenticate_gigya, GigyaAuthError
 
 from .const import *
 
@@ -185,7 +186,73 @@ class CremalinkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_cloud_auth(self, user_input=None):
-        """Handle the cloud authentication step.
+        """Handle the cloud authentication method choice."""
+        return self.async_show_menu(
+            step_id="cloud_auth",
+            menu_options={
+                "cloud_login": "Email & Password",
+                "cloud_token": "Refresh Token (advanced)",
+            },
+        )
+
+    async def async_step_cloud_login(self, user_input=None):
+        """Handle cloud authentication via email and password.
+
+        Uses the Gigya OIDC flow to obtain tokens automatically.
+
+        Args:
+            user_input: Input data from the user.
+
+        Returns:
+            The next step in the flow.
+        """
+        errors = {}
+        if user_input is not None:
+            email = user_input[CONF_EMAIL]
+            password = user_input[CONF_PASSWORD]
+
+            token_dir = self.hass.config.path(TOKEN_DIR)
+            os.makedirs(token_dir, exist_ok=True)
+            temp_file = os.path.join(token_dir, "temp_token.json")
+
+            try:
+                def _login_and_fetch():
+                    tokens = authenticate_gigya(email, password)
+                    with open(temp_file, "w") as f:
+                        json.dump({"refresh_token": tokens.refresh_token}, f)
+                    client = Client(temp_file)
+                    return client.get_devices()
+
+                self._discovered_devices = await self.hass.async_add_executor_job(_login_and_fetch)
+                self._temp_token_file = temp_file
+
+                if not self._discovered_devices:
+                    errors["base"] = "no_devices"
+                else:
+                    return await self.async_step_cloud_device()
+
+            except GigyaAuthError as e:
+                _LOGGER.error("Login failed: %s", e)
+                errors["base"] = "login_failed"
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            except Exception as e:
+                _LOGGER.error("Authentication failed: %s", e)
+                errors["base"] = "auth_failed"
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+
+        return self.async_show_form(
+            step_id="cloud_login",
+            data_schema=vol.Schema({
+                vol.Required(CONF_EMAIL): str,
+                vol.Required(CONF_PASSWORD): str,
+            }),
+            errors=errors,
+        )
+
+    async def async_step_cloud_token(self, user_input=None):
+        """Handle cloud authentication via refresh token (advanced).
 
         Args:
             user_input: Input data from the user.
@@ -228,7 +295,7 @@ class CremalinkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     os.remove(temp_file)
 
         return self.async_show_form(
-            step_id="cloud_auth",
+            step_id="cloud_token",
             data_schema=vol.Schema({
                 vol.Required(CONF_REFRESH_TOKEN): str,
             }),

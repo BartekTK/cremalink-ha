@@ -1,5 +1,6 @@
 """Data update coordinator for the Cremalink integration."""
 import logging
+import time
 from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
@@ -7,7 +8,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from cremalink.domain.device import Device
 
-from .const import DOMAIN
+from .const import DOMAIN, CONNECTION_CLOUD, APP_ID_REFRESH_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,12 +18,13 @@ SCAN_INTERVAL_SLOW = timedelta(seconds=30)
 class CremalinkCoordinator(DataUpdateCoordinator):
     """Class to manage fetching data from the Cremalink device."""
 
-    def __init__(self, hass: HomeAssistant, device: Device):
+    def __init__(self, hass: HomeAssistant, device: Device, connection_type: str = ""):
         """Initialize the coordinator.
 
         Args:
             hass: The Home Assistant instance.
             device: The Cremalink device instance.
+            connection_type: The connection type ("local" or "cloud").
         """
         super().__init__(
             hass,
@@ -32,6 +34,43 @@ class CremalinkCoordinator(DataUpdateCoordinator):
             update_interval=SCAN_INTERVAL_FAST,
         )
         self.device = device
+        self.connection_type = connection_type
+        self._app_id_activated = False
+        self._last_app_id_refresh: float = 0
+
+    async def _async_ensure_app_connection(self) -> None:
+        """Activate and periodically refresh the app connection for cloud devices.
+
+        The machine only pushes live monitor data when an app has registered
+        via the app_id property. This ensures the connection stays active.
+        """
+        if self.connection_type != CONNECTION_CLOUD:
+            return
+
+        now = time.monotonic()
+
+        if not self._app_id_activated:
+            _LOGGER.debug("Activating app connection for live monitor data")
+            try:
+                result = await self.hass.async_add_executor_job(
+                    self.device.activate_app_connection
+                )
+                self._app_id_activated = True
+                self._last_app_id_refresh = now
+                if result:
+                    _LOGGER.info("App connection activated successfully")
+                else:
+                    _LOGGER.warning("App connection activation returned False; monitor data may be stale")
+            except Exception as err:
+                _LOGGER.warning("Failed to activate app connection: %s", err)
+                return
+
+        elif now - self._last_app_id_refresh > APP_ID_REFRESH_INTERVAL:
+            try:
+                await self.hass.async_add_executor_job(self.device._refresh_app_id)
+                self._last_app_id_refresh = now
+            except Exception as err:
+                _LOGGER.debug("App ID refresh failed (will retry): %s", err)
 
     async def _async_update_data(self):
         """Fetch data from the device.
@@ -43,6 +82,9 @@ class CremalinkCoordinator(DataUpdateCoordinator):
             UpdateFailed: If there is an error communicating with the device.
         """
         try:
+            # Ensure app connection is active for cloud devices.
+            await self._async_ensure_app_connection()
+
             data = await self.hass.async_add_executor_job(self.device.get_monitor)
 
             if data and hasattr(data, 'parsed') and isinstance(data.parsed, dict):
