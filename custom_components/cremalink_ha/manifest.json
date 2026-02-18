@@ -11,6 +11,6 @@
     "cremalink @ git+https://github.com/BartekTK/cremalink.git@main"
   ],
   "issue_tracker": "https://github.com/miditkl/cremalink-ha/issues",
-  "version": "v0.1.0b13",
+  "version": "v0.1.0b14",
   "quality_scale": "bronze"
 }

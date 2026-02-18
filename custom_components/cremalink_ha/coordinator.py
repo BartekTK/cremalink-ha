@@ -115,6 +115,12 @@ class PropertiesData:
     favorites: dict[int, list[str]] = field(default_factory=dict)
     machine_settings: dict[str, int] = field(default_factory=dict)
     active_profile: Optional[int] = None
+    recipe_priority: dict[int, list[str]] = field(default_factory=dict)
+    serial_number: Optional[str] = None
+    bean_system: dict[int, str] = field(default_factory=dict)
+    service_parameters: dict[str, Any] = field(default_factory=dict)
+    json_counters: dict[str, int] = field(default_factory=dict)
+    software_version: Optional[str] = None
 
 
 class CremalinkPropertiesCoordinator(DataUpdateCoordinator[PropertiesData]):
@@ -157,6 +163,12 @@ class CremalinkPropertiesCoordinator(DataUpdateCoordinator[PropertiesData]):
                 favorites=snapshot.get_favorites(),
                 machine_settings=snapshot.get_machine_settings(),
                 active_profile=snapshot.get_active_profile(),
+                recipe_priority=snapshot.get_recipe_priority(),
+                serial_number=snapshot.get_serial_number(),
+                bean_system=snapshot.get_bean_system(),
+                service_parameters=snapshot.get_service_parameters(),
+                json_counters=snapshot.get_json_counters(),
+                software_version=snapshot.get_software_version(),
             )
         except Exception as err:
             raise UpdateFailed(f"Error fetching properties: {err}") from err

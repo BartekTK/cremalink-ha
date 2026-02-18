@@ -17,11 +17,27 @@ SENSORS = [
 # (key in maintenance dict, display name, icon, unit, entity_category)
 MAINTENANCE_SENSORS = [
     ("grounds_container", "Grounds Container", "mdi:delete-variant", PERCENTAGE, None),
+    ("descale_progress", "Descale Progress", "mdi:progress-wrench", PERCENTAGE, None),
     ("water_filter", "Water Filter", "mdi:water-check", PERCENTAGE, None),
     ("water_since_descale", "Water Since Descale", "mdi:water-alert", UnitOfVolume.LITERS, EntityCategory.DIAGNOSTIC),
     ("grounds_count", "Total Grounds Emptied", "mdi:counter", "uses", EntityCategory.DIAGNOSTIC),
+    ("total_descale_cycles", "Total Descale Cycles", "mdi:wrench-clock", "cycles", EntityCategory.DIAGNOSTIC),
     ("total_water_dispensed", "Total Water Dispensed", "mdi:water-pump", UnitOfVolume.LITERS, EntityCategory.DIAGNOSTIC),
+    ("total_filter_replacements", "Total Filter Replacements", "mdi:filter-check", "times", EntityCategory.DIAGNOSTIC),
+    ("water_since_filter", "Water Since Filter Change", "mdi:water-sync", UnitOfVolume.LITERS, EntityCategory.DIAGNOSTIC),
     ("water_hardness_setting", "Water Hardness Setting", "mdi:water", None, EntityCategory.DIAGNOSTIC),
+]
+
+# Service parameter display config: (key, display_name, icon, unit).
+SERVICE_PARAM_SENSORS = [
+    ("descale_status", "Descale Status", "mdi:wrench-cog", None),
+    ("last_4_water_calc_qty", "Last 4 Descale Water", "mdi:water-thermometer", UnitOfVolume.LITERS),
+    ("last_4_calc_threshold", "Descale Threshold", "mdi:gauge", None),
+    ("water_steamer_calc_rel_qty", "Steamer Water (Relative)", "mdi:pipe-valve", UnitOfVolume.LITERS),
+    ("water_heater_calc_abs_qty", "Heater Water (Total)", "mdi:water-boiler", UnitOfVolume.LITERS),
+    ("water_steamer_calc_abs_qty", "Steamer Water (Total)", "mdi:pipe-valve", UnitOfVolume.LITERS),
+    ("water_cold_branch_calc_rel_qty", "Cold Branch Water (Relative)", "mdi:snowflake-thermometer", UnitOfVolume.LITERS),
+    ("water_cold_branch_calc_abs_qty", "Cold Branch Water (Total)", "mdi:snowflake-thermometer", UnitOfVolume.LITERS),
 ]
 
 # Machine settings display config.
@@ -108,6 +124,47 @@ async def async_setup_entry(hass, entry, async_add_entities):
         if props.active_profile is not None:
             entities.append(
                 CremalinkActiveProfileSensor(properties_coordinator, entry)
+            )
+
+        # JSON counter sensors (d702, d733-d740 breakdown)
+        for label, count in props.json_counters.items():
+            entities.append(
+                CremalinkJsonCounterSensor(properties_coordinator, entry, label)
+            )
+
+        # Service parameter sensors
+        for key, display_name, icon, unit in SERVICE_PARAM_SENSORS:
+            if key in props.service_parameters:
+                entities.append(
+                    CremalinkServiceParamSensor(
+                        properties_coordinator, entry, key, display_name, icon, unit
+                    )
+                )
+
+        # Bean system sensors
+        for slot, name in props.bean_system.items():
+            entities.append(
+                CremalinkBeanSystemSensor(properties_coordinator, entry, slot)
+            )
+
+        # Serial number sensor
+        if props.serial_number:
+            entities.append(
+                CremalinkDiagnosticSensor(
+                    properties_coordinator, entry,
+                    "serial_number", "Serial Number", "mdi:barcode",
+                    lambda d: d.serial_number,
+                )
+            )
+
+        # Software version sensor
+        if props.software_version:
+            entities.append(
+                CremalinkDiagnosticSensor(
+                    properties_coordinator, entry,
+                    "software_version", "Firmware Version", "mdi:chip",
+                    lambda d: d.software_version,
+                )
             )
 
     async_add_entities(entities)
@@ -225,13 +282,17 @@ class CremalinkProfileSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        """Return favorites for this profile as extra attributes."""
+        """Return favorites and recipe priority for this profile."""
         if not self.coordinator.data:
             return None
+        attrs = {}
         favorites = self.coordinator.data.favorites.get(self._profile_num)
         if favorites:
-            return {"favorites": favorites}
-        return None
+            attrs["favorites"] = favorites
+        priority = self.coordinator.data.recipe_priority.get(self._profile_num)
+        if priority:
+            attrs["recipe_priority"] = priority
+        return attrs or None
 
 
 class CremalinkAggregateCounterSensor(CoordinatorEntity, SensorEntity):
@@ -332,3 +393,98 @@ class CremalinkActiveProfileSensor(CoordinatorEntity, SensorEntity):
             return None
         name = self.coordinator.data.profile_names.get(profile_num)
         return name if name else f"Profile {profile_num}"
+
+
+class CremalinkJsonCounterSensor(CoordinatorEntity, SensorEntity):
+    """Counter from JSON-valued properties (d702, d733-d740 breakdowns)."""
+
+    def __init__(self, coordinator, entry, label):
+        super().__init__(coordinator)
+        self._label = label
+        display = label.replace("_", " ").title()
+        self._attr_name = f"{entry.title} {display}"
+        self._attr_unique_id = f"{entry.entry_id}_jcnt_{label}"
+        self._attr_icon = "mdi:counter"
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=entry.title,
+            manufacturer="cremalink",
+        )
+
+    @property
+    def native_value(self):
+        if not self.coordinator.data:
+            return None
+        return self.coordinator.data.json_counters.get(self._label, 0)
+
+
+class CremalinkServiceParamSensor(CoordinatorEntity, SensorEntity):
+    """Service parameter sensor (descale info, steamer/heater water tracking)."""
+
+    def __init__(self, coordinator, entry, key, name, icon, unit):
+        super().__init__(coordinator)
+        self._key = key
+        self._attr_name = f"{entry.title} {name}"
+        self._attr_unique_id = f"{entry.entry_id}_svc_{key}"
+        self._attr_icon = icon
+        self._attr_native_unit_of_measurement = unit
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=entry.title,
+            manufacturer="cremalink",
+        )
+
+    @property
+    def native_value(self):
+        if not self.coordinator.data:
+            return None
+        return self.coordinator.data.service_parameters.get(self._key)
+
+
+class CremalinkBeanSystemSensor(CoordinatorEntity, SensorEntity):
+    """Bean system sensor showing the name of a configured bean type."""
+
+    def __init__(self, coordinator, entry, slot):
+        super().__init__(coordinator)
+        self._slot = slot
+        self._attr_name = f"{entry.title} Bean Slot {slot}"
+        self._attr_unique_id = f"{entry.entry_id}_bean_{slot}"
+        self._attr_icon = "mdi:seed"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=entry.title,
+            manufacturer="cremalink",
+        )
+
+    @property
+    def native_value(self):
+        if not self.coordinator.data:
+            return None
+        return self.coordinator.data.bean_system.get(self._slot)
+
+
+class CremalinkDiagnosticSensor(CoordinatorEntity, SensorEntity):
+    """Generic diagnostic sensor driven by a value extractor function."""
+
+    def __init__(self, coordinator, entry, key, name, icon, value_fn):
+        super().__init__(coordinator)
+        self._value_fn = value_fn
+        self._attr_name = f"{entry.title} {name}"
+        self._attr_unique_id = f"{entry.entry_id}_diag_{key}"
+        self._attr_icon = icon
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=entry.title,
+            manufacturer="cremalink",
+        )
+
+    @property
+    def native_value(self):
+        if not self.coordinator.data:
+            return None
+        return self._value_fn(self.coordinator.data)

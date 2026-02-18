@@ -160,4 +160,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
+        # Remove the brew service when no entries remain.
+        if not hass.data[DOMAIN] and hass.services.has_service(DOMAIN, SERVICE_BREW):
+            hass.services.async_remove(DOMAIN, SERVICE_BREW)
     return unload_ok
