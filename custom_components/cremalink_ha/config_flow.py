@@ -1,11 +1,13 @@
 """Config flow for the Cremalink integration."""
+import json
 import logging
 import os
-import json
+import uuid
+
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 
 from cremalink.devices import get_device_maps, load_device_map
 from cremalink import Client
@@ -14,6 +16,11 @@ from cremalink.clients.auth import authenticate_gigya, GigyaAuthError
 from .const import *
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def create_temp_token_file(token_dir: str) -> str:
+    """Create a unique temporary token path for a config flow."""
+    return os.path.join(token_dir, f"temp_token_{uuid.uuid4().hex}.json")
 
 
 def get_available_maps(hass: HomeAssistant) -> list[str]:
@@ -67,6 +74,12 @@ class CremalinkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     _temp_token_file: str | None = None
     _discovered_devices: list[str] = []
     _selected_map: str | None = None
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        """Return the options flow for this config entry."""
+        return CremalinkOptionsFlow(config_entry)
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step (Model Selection)."""
@@ -213,7 +226,7 @@ class CremalinkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             token_dir = self.hass.config.path(TOKEN_DIR)
             os.makedirs(token_dir, exist_ok=True)
-            temp_file = os.path.join(token_dir, "temp_token.json")
+            temp_file = create_temp_token_file(token_dir)
 
             try:
                 def _login_and_fetch():
@@ -236,11 +249,13 @@ class CremalinkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "login_failed"
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
+                self._temp_token_file = None
             except Exception as e:
                 _LOGGER.error("Authentication failed: %s", e)
                 errors["base"] = "auth_failed"
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
+                self._temp_token_file = None
 
         return self.async_show_form(
             step_id="cloud_login",
@@ -269,7 +284,7 @@ class CremalinkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             os.makedirs(token_dir, exist_ok=True)
 
             # Create a temporary token file
-            temp_file = os.path.join(token_dir, "temp_token.json")
+            temp_file = create_temp_token_file(token_dir)
 
             try:
                 def _auth_and_fetch():
@@ -293,6 +308,7 @@ class CremalinkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # Clean up if failed
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
+                self._temp_token_file = None
 
         return self.async_show_form(
             step_id="cloud_token",
@@ -333,13 +349,13 @@ class CremalinkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             data = {
                 CONF_CONNECTION_TYPE: CONNECTION_CLOUD,
-                DEVICE_NAME: dsn,  # Default name, user can change later in HA entity settings
+                DEVICE_NAME: user_input[DEVICE_NAME],
                 CONF_DSN: dsn,
                 CONF_DEVICE_MAP: user_input[CONF_DEVICE_MAP],
                 CONF_TOKEN_FILE: final_token_path
             }
 
-            return self.async_create_entry(title=dsn, data=data)
+            return self.async_create_entry(title=user_input[DEVICE_NAME], data=data)
 
         schema = {
             vol.Required(DEVICE_NAME): str,
@@ -352,4 +368,69 @@ class CremalinkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="cloud_device",
             data_schema=vol.Schema(schema),
             errors=errors,
+        )
+
+
+class CremalinkOptionsFlow(config_entries.OptionsFlow):
+    """Handle Cremalink integration options."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize the options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        """Manage the integration options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        schema = {
+            vol.Required(
+                CONF_FAST_SCAN_INTERVAL,
+                default=self.config_entry.options.get(
+                    CONF_FAST_SCAN_INTERVAL,
+                    FAST_SCAN_INTERVAL,
+                ),
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=30)),
+            vol.Required(
+                CONF_SLOW_SCAN_INTERVAL,
+                default=self.config_entry.options.get(
+                    CONF_SLOW_SCAN_INTERVAL,
+                    SLOW_SCAN_INTERVAL,
+                ),
+            ): vol.All(vol.Coerce(int), vol.Range(min=5, max=300)),
+            vol.Required(
+                CONF_FILTER_ALERT_THRESHOLD,
+                default=self.config_entry.options.get(
+                    CONF_FILTER_ALERT_THRESHOLD,
+                    FILTER_ALERT_THRESHOLD,
+                ),
+            ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+            vol.Required(
+                CONF_GROUNDS_ALERT_THRESHOLD,
+                default=self.config_entry.options.get(
+                    CONF_GROUNDS_ALERT_THRESHOLD,
+                    GROUNDS_ALERT_THRESHOLD,
+                ),
+            ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+        }
+
+        if self.config_entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_CLOUD:
+            schema[vol.Required(
+                CONF_PROPERTIES_SCAN_INTERVAL,
+                default=self.config_entry.options.get(
+                    CONF_PROPERTIES_SCAN_INTERVAL,
+                    PROPERTIES_SCAN_INTERVAL,
+                ),
+            )] = vol.All(vol.Coerce(int), vol.Range(min=30, max=3600))
+            schema[vol.Required(
+                CONF_APP_ID_REFRESH_INTERVAL,
+                default=self.config_entry.options.get(
+                    CONF_APP_ID_REFRESH_INTERVAL,
+                    APP_ID_REFRESH_INTERVAL,
+                ),
+            )] = vol.All(vol.Coerce(int), vol.Range(min=10, max=600))
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(schema),
         )

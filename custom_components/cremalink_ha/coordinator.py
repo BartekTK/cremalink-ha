@@ -1,8 +1,7 @@
 """Data update coordinator for the Cremalink integration."""
 import logging
-import time
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Optional
 
 from homeassistant.core import HomeAssistant
@@ -12,17 +11,29 @@ from cremalink.domain.device import Device
 from cremalink.parsing.properties import PropertiesSnapshot
 from cremalink.parsing.recipes import RecipeSnapshot
 
-from .const import DOMAIN, CONNECTION_CLOUD, APP_ID_REFRESH_INTERVAL, PROPERTIES_SCAN_INTERVAL
+from .const import (
+    APP_ID_REFRESH_INTERVAL,
+    CONNECTION_CLOUD,
+    DOMAIN,
+    FAST_SCAN_INTERVAL,
+    PROPERTIES_SCAN_INTERVAL,
+    SLOW_SCAN_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
-
-SCAN_INTERVAL_FAST = timedelta(seconds=1)
-SCAN_INTERVAL_SLOW = timedelta(seconds=30)
 
 class CremalinkCoordinator(DataUpdateCoordinator):
     """Class to manage fetching data from the Cremalink device."""
 
-    def __init__(self, hass: HomeAssistant, device: Device, connection_type: str = ""):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        device: Device,
+        connection_type: str = "",
+        fast_scan_interval: int = FAST_SCAN_INTERVAL,
+        slow_scan_interval: int = SLOW_SCAN_INTERVAL,
+        app_refresh_interval: int = APP_ID_REFRESH_INTERVAL,
+    ):
         """Initialize the coordinator.
 
         Args:
@@ -35,12 +46,27 @@ class CremalinkCoordinator(DataUpdateCoordinator):
             _LOGGER,
             name=DOMAIN,
             # Poll the device every second for updates
-            update_interval=SCAN_INTERVAL_FAST,
+            update_interval=timedelta(seconds=fast_scan_interval),
         )
         self.device = device
         self.connection_type = connection_type
         self._app_id_activated = False
-        self._last_app_id_refresh: float = 0
+        self._fast_scan_interval = timedelta(seconds=fast_scan_interval)
+        self._slow_scan_interval = timedelta(seconds=slow_scan_interval)
+        self._app_refresh_interval = app_refresh_interval
+        self.last_error: str | None = None
+
+    def apply_options(
+        self,
+        fast_scan_interval: int,
+        slow_scan_interval: int,
+        app_refresh_interval: int,
+    ) -> None:
+        """Update coordinator timing from config entry options."""
+        self._fast_scan_interval = timedelta(seconds=fast_scan_interval)
+        self._slow_scan_interval = timedelta(seconds=slow_scan_interval)
+        self._app_refresh_interval = app_refresh_interval
+        self.update_interval = self._fast_scan_interval
 
     async def _async_ensure_app_connection(self) -> None:
         """Activate and periodically refresh the app connection for cloud devices.
@@ -51,30 +77,21 @@ class CremalinkCoordinator(DataUpdateCoordinator):
         if self.connection_type != CONNECTION_CLOUD:
             return
 
-        now = time.monotonic()
-
-        if not self._app_id_activated:
-            _LOGGER.debug("Activating app connection for live monitor data")
-            try:
-                result = await self.hass.async_add_executor_job(
-                    self.device.activate_app_connection
+        try:
+            result = await self.hass.async_add_executor_job(
+                self.device.ensure_app_connection,
+                self._app_refresh_interval,
+            )
+            if result and not self._app_id_activated:
+                _LOGGER.info("App connection activated successfully")
+            elif not result:
+                _LOGGER.warning(
+                    "App connection activation returned False; monitor data may be stale"
                 )
-                self._app_id_activated = True
-                self._last_app_id_refresh = now
-                if result:
-                    _LOGGER.info("App connection activated successfully")
-                else:
-                    _LOGGER.warning("App connection activation returned False; monitor data may be stale")
-            except Exception as err:
-                _LOGGER.warning("Failed to activate app connection: %s", err)
-                return
-
-        elif now - self._last_app_id_refresh > APP_ID_REFRESH_INTERVAL:
-            try:
-                await self.hass.async_add_executor_job(self.device._refresh_app_id)
-                self._last_app_id_refresh = now
-            except Exception as err:
-                _LOGGER.debug("App ID refresh failed (will retry): %s", err)
+            self._app_id_activated = result
+        except Exception as err:
+            self._app_id_activated = False
+            _LOGGER.warning("Failed to activate app connection: %s", err)
 
     async def _async_update_data(self):
         """Fetch data from the device.
@@ -94,12 +111,14 @@ class CremalinkCoordinator(DataUpdateCoordinator):
             if data and hasattr(data, 'parsed') and isinstance(data.parsed, dict):
                 status = data.parsed.get("status")
                 if status == 0:  # if in standby, poll slowly
-                    self.update_interval = SCAN_INTERVAL_SLOW
+                    self.update_interval = self._slow_scan_interval
                 elif status is not None:
-                    self.update_interval = SCAN_INTERVAL_FAST
+                    self.update_interval = self._fast_scan_interval
 
+            self.last_error = None
             return data
         except Exception as err:
+            self.last_error = str(err)
             raise UpdateFailed(f"Error communicating with device: {err}") from err
 
 
@@ -107,6 +126,7 @@ class CremalinkCoordinator(DataUpdateCoordinator):
 class PropertiesData:
     """Parsed results from a properties fetch."""
 
+    received_at: Optional[datetime] = None
     counters: dict[str, int] = field(default_factory=dict)
     aggregate_counters: dict[str, int] = field(default_factory=dict)
     profile_names: dict[int, str] = field(default_factory=dict)
@@ -126,7 +146,12 @@ class PropertiesData:
 class CremalinkPropertiesCoordinator(DataUpdateCoordinator[PropertiesData]):
     """Slow-polling coordinator for cloud properties (counters, profiles, recipes)."""
 
-    def __init__(self, hass: HomeAssistant, device: Device) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        device: Device,
+        properties_scan_interval: int = PROPERTIES_SCAN_INTERVAL,
+    ) -> None:
         """Initialize the properties coordinator.
 
         Args:
@@ -137,9 +162,14 @@ class CremalinkPropertiesCoordinator(DataUpdateCoordinator[PropertiesData]):
             hass,
             _LOGGER,
             name=f"{DOMAIN}_properties",
-            update_interval=timedelta(seconds=PROPERTIES_SCAN_INTERVAL),
+            update_interval=timedelta(seconds=properties_scan_interval),
         )
         self.device = device
+        self.last_error: str | None = None
+
+    def apply_options(self, properties_scan_interval: int) -> None:
+        """Update the properties polling interval from entry options."""
+        self.update_interval = timedelta(seconds=properties_scan_interval)
 
     async def _async_update_data(self) -> PropertiesData:
         """Fetch and parse cloud properties.
@@ -154,7 +184,8 @@ class CremalinkPropertiesCoordinator(DataUpdateCoordinator[PropertiesData]):
             snapshot: PropertiesSnapshot = await self.hass.async_add_executor_job(
                 self.device.get_properties
             )
-            return PropertiesData(
+            result = PropertiesData(
+                received_at=snapshot.received_at,
                 counters=snapshot.get_counters(),
                 aggregate_counters=snapshot.get_aggregate_counters(),
                 profile_names=snapshot.get_profile_names(),
@@ -170,5 +201,8 @@ class CremalinkPropertiesCoordinator(DataUpdateCoordinator[PropertiesData]):
                 json_counters=snapshot.get_json_counters(),
                 software_version=snapshot.get_software_version(),
             )
+            self.last_error = None
+            return result
         except Exception as err:
+            self.last_error = str(err)
             raise UpdateFailed(f"Error fetching properties: {err}") from err

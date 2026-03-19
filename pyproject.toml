@@ -5,5 +5,5 @@ description = "Cremalink for Home-Assistant Add-on & Integration"
 requires-python = ">=3.13.2"
 dependencies = [
     "homeassistant>=2026.1.0",
-    "cremalink==0.1.0b20"
+    "cremalink @ git+https://github.com/BartekTK/cremalink.git@5a48b3298a040c45ad203727a11f1c293cc56f02"
 ]

@@ -5,7 +5,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from cremalink.domain.beverages import BeverageCatalog, BeverageCategory
 
-from .const import DOMAIN, CONF_CONNECTION_TYPE, CONNECTION_CLOUD
+from .const import DOMAIN
 
 _CATALOG = BeverageCatalog()
 
@@ -19,6 +19,13 @@ _CATEGORY_ICONS = {
     BeverageCategory.MY_ICED: "mdi:star-outline",
     BeverageCategory.CARAFE: "mdi:coffee-maker-outline",
     BeverageCategory.SPECIAL: "mdi:creation",
+}
+
+_COMMAND_ICONS = {
+    "stop": "mdi:stop",
+    "rinse": "mdi:water-sync",
+    "descale": "mdi:wrench",
+    "clean": "mdi:spray-bottle",
 }
 
 
@@ -73,17 +80,18 @@ class CremalinkButton(CoordinatorEntity, ButtonEntity):
             self._title = bev_info.display_name
             self._attr_icon = _CATEGORY_ICONS.get(bev_info.category, "mdi:coffee")
         else:
-            self._title = cmd.replace('_', ' ').title()
-            self._attr_icon = "mdi:coffee"
+            self._title = cmd.replace("_", " ").title()
+            self._attr_icon = _COMMAND_ICONS.get(cmd.lower(), "mdi:gesture-tap-button")
 
         if cmd.lower() == "stop":
             self._attr_name = f"Stop"
-            self._attr_icon = "mdi:stop"
-        else:
+            self._attr_icon = _COMMAND_ICONS["stop"]
+        elif bev_info:
             self._attr_name = f"Brew {self._title}"
+        else:
+            self._attr_name = self._title
 
         self._attr_unique_id = f"{entry.entry_id}_cmd_{cmd}"
-        self._connection_type = entry.data.get(CONF_CONNECTION_TYPE)
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
@@ -148,16 +156,39 @@ class CremalinkButton(CoordinatorEntity, ButtonEntity):
     def extra_state_attributes(self):
         """Return recipe parameters as extra state attributes."""
         bev_info = _CATALOG.get_by_name(self._cmd)
-        if not bev_info:
-            return None
-
         profile = self._get_selected_profile()
+        attrs = {
+            "selected_profile": profile,
+        }
+
+        if self._properties_coordinator and self._properties_coordinator.data:
+            profile_name = self._properties_coordinator.data.profile_names.get(profile)
+            if profile_name:
+                attrs["selected_profile_name"] = profile_name
+
+            favorites = self._properties_coordinator.data.favorites.get(profile) or []
+            attrs["is_favorite"] = self._cmd in favorites
+            if favorites:
+                attrs["favorites"] = favorites
+
+            recipe_priority = self._properties_coordinator.data.recipe_priority.get(profile)
+            if recipe_priority:
+                attrs["recipe_priority"] = recipe_priority
+
+            if self._properties_coordinator.data.bean_system:
+                attrs["bean_slots"] = self._properties_coordinator.data.bean_system
+
+        if not bev_info:
+            return attrs
+
         match = self._find_recipe(bev_info.id, profile)
+        if not match:
+            return attrs
 
-        if not match or not match.named_params:
-            return None
-
-        return {k: v for k, v in match.named_params.items()}
+        attrs["recipe_profile"] = match.profile
+        if match.named_params:
+            attrs.update(match.named_params)
+        return attrs
 
     async def async_press(self):
         """Handle the button press.

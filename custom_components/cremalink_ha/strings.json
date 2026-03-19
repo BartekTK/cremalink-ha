@@ -43,6 +43,7 @@
         "title": "Select Device",
         "description": "Select the device you wish to add.",
         "data": {
+          "device_name": "Name",
           "dsn": "Device",
           "device_map": "Device Map"
         }
@@ -68,6 +69,22 @@
     },
     "abort": {
       "already_configured": "Device is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Cremalink Options",
+        "description": "Tune polling intervals and maintenance alert thresholds.",
+        "data": {
+          "fast_scan_interval": "Active polling interval (seconds)",
+          "slow_scan_interval": "Standby polling interval (seconds)",
+          "properties_scan_interval": "Cloud properties refresh interval (seconds)",
+          "app_id_refresh_interval": "Cloud live session refresh interval (seconds)",
+          "filter_alert_threshold": "Water filter alert threshold (%)",
+          "grounds_alert_threshold": "Grounds container alert threshold (%)"
+        }
+      }
     }
   }
 }
